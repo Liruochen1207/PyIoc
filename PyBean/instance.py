@@ -1,4 +1,4 @@
-def create_instance(class_name, *args):
+def create_instance(class_name, *args, **kwargs):
     # print("create name:", class_name)
     parts = class_name.split('.')
     module_name = '.'.join(parts[:-1])
@@ -7,7 +7,7 @@ def create_instance(class_name, *args):
     try:
         module = __import__(module_name, fromlist=[class_name])
         clazz = getattr(module, class_name)
-        return clazz(*args)
+        return clazz(*args, **kwargs)
     except ImportError as e:
         raise ImportError(f"Unable to import {module_name}: {e}")
     except AttributeError:

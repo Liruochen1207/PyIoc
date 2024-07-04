@@ -10,5 +10,8 @@
       </MTProjectMetadataState>
     </option>
   </component>
+  <component name="ProjectResources">
+    <resource url="https://www.springframework.org/schema/beans/spring-beans.xsd" location="$APPLICATION_HOME_DIR$/lib/app.jar" />
+  </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.12 (PyBean)" project-jdk-type="Python SDK" />
 </project>

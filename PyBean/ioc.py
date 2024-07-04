@@ -2,7 +2,7 @@ import os
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Type
 
-from PyBean.bean import Bean, Property, value_translate
+from PyBean.bean import *
 from PyBean.by import *
 
 
@@ -87,7 +87,7 @@ class FuncStringLoader:
 
 class ElementLoader:
     def __init__(self, element: ET.Element):
-        self.element = element
+        self.element: ET.Element = element
         self.parent = None
         self.children = []
 
@@ -138,13 +138,14 @@ class ApplicationContext:
         self.pointer = None
         self.depth = None
         self.__scanDiction = None
+        f"""
+        The none-variables init in {self.reloadFromfile} and {self.refresh}
+        """
+
         self.childApplications = []
-
         self.__mode = applicationMode
-
         self.path = applicationContextPath
-        self.reloadFromfile()
-        self.refresh()  # Init
+        self.reloadAll()
         self.__doImportLoadList()
 
     def set__mode(self, mode: ApplicationMode):
@@ -167,16 +168,20 @@ class ApplicationContext:
             li.append(self.pointer[index])
         return li
 
+    def refresh(self):
+        self.debug_print('refresh')
+        self.__scanDiction: Dict[int, List[ElementLoader]] = self.__scan()
+
     def reloadFromfile(self):
         self.debug_print('reloadFromfile')
-        self.tree = ET.parse(self.path)
+        self.tree: ET.ElementTree = ET.parse(self.path)
         self.root = self.tree.getroot()
         self.pointer: ET.Element = self.root
         self.depth = -1
 
-    def refresh(self):
-        self.debug_print('refresh')
-        self.__scanDiction: Dict[int, List[ElementLoader]] = self.__scan()
+    def reloadAll(self):
+        self.reloadFromfile()
+        self.refresh()
 
     def __scan(self) -> Dict[int, List[ElementLoader]]:
         layer = {}
@@ -232,6 +237,74 @@ class ApplicationContext:
         li.extend(self.__getLoaderList(depth=0, tagName="bean"))
         return li
 
+    def buildRef(self, refLoader: ElementLoader):  # ready for replace
+        ref_name = None
+        for childLoader in refLoader.children:
+            tag = childLoader.element.tag
+            text = childLoader.element.text
+            if tag == "ref":
+                ref_name = text
+                break
+
+        if ref_name is not None:
+            # 从ApplicationContext中获取指定名称的Bean
+            return self.getBean(ref_name)
+        else:
+            raise ValueError("No ref name found for <ref/> tag.")
+
+
+    def buildProperties(self, propsLoader: ElementLoader):
+        propInstance = Properties()
+        for childLoader in propsLoader.children:
+            tag = childLoader.element.tag
+            text = childLoader.element.text
+            if tag == "prop":
+                key = childLoader.element.attrib['key']
+                if childLoader.children == []:
+                    propInstance.set_property(key, value_translate(text))
+
+        return propInstance
+
+    def buildCollection_List(self, listLoader: ElementLoader):
+        listInstance = []
+        for childLoader in listLoader.children:
+            tag = childLoader.element.tag
+            text = childLoader.element.text
+            if tag == "value":
+                arg = value_translate(text)
+                listInstance.append(arg)
+            if tag == "ref":
+                arg = self.getBean(text)
+                listInstance.append(arg)
+
+        return listInstance
+
+    def buildCollection_Set(self, setLoader: ElementLoader):
+        setInstance = set()
+        for childLoader in setLoader.children:
+            tag = childLoader.element.tag
+            text = childLoader.element.text
+            if tag == "value":
+                arg = value_translate(text)
+                setInstance.add(arg)
+            if tag == "ref":
+                arg = self.getBean(text)
+                setInstance.add(arg)
+
+        return setInstance
+
+    def buildCollection_Map(self, mapLoader: ElementLoader):
+        mapInstance = {}
+        for childLoader in mapLoader.children:
+            if childLoader.element.tag == "entry":
+                key = getAttributeFromElement(childLoader.element, 'key')
+                value = getAttributeFromElement(childLoader.element, 'value')
+                ref = getAttributeFromElement(childLoader.element, 'ref')
+                mapInstance[key] = value_translate(value)
+                if ref is not None:
+                    mapInstance[key] = self.getBean(ref)
+        return mapInstance
+
     def buildBean(self, loader: ElementLoader):
         bean = Bean()
 
@@ -247,13 +320,15 @@ class ApplicationContext:
 
         childrenLoaders = loader.children
         args = []
+        kwargs = {}
         for childLoader in childrenLoaders:
             childElement: ET.Element = childLoader.element
             if childElement.tag == "constructor-arg":
-                if "value" in childElement.attrib:
+                if "name" in childElement.attrib:
+                    kwargs[childElement.attrib["name"]] = childElement.attrib["value"]
+                elif "value" in childElement.attrib:
                     value = childElement.attrib['value']
-                    value_translate(value)
-                    args.append(value)
+                    args.append(value_translate(value))
 
                 elif "ref" in childElement.attrib:
                     ref = childElement.attrib['ref']
@@ -264,15 +339,44 @@ class ApplicationContext:
                 pn = getAttributeFromElement(childElement, 'name')
                 pf = getAttributeFromElement(childElement, 'ref')
                 pv = getAttributeFromElement(childElement, 'value')
+                if pf is not None:
+                    pv = self.getBean(pf)
                 prop = Property(
                     name=pn,
-                    ref=pf,
                     value=pv,
                 )
+                if pf == pv == None:
+                    for grandchildLoader in childLoader.children:
+                        tag = grandchildLoader.element.tag
+                        if tag == "map":
+                            mapInstance = self.buildCollection_Map(grandchildLoader)
+                            prop = Property(
+                                name=pn,
+                                value=mapInstance,
+                            )
+                        if tag == "list":
+                            listInstance = self.buildCollection_List(grandchildLoader)
+                            prop = Property(
+                                name=pn,
+                                value=listInstance,
+                            )
+                        if tag == "set":
+                            setInstance = self.buildCollection_Set(grandchildLoader)
+                            prop = Property(
+                                name=pn,
+                                value=setInstance,
+                            )
+
+                        if tag == "props":
+                            propsInstance = self.buildProperties(grandchildLoader)
+                            prop = Property(
+                                name=pn,
+                                value=propsInstance,
+                            )
                 bean.add_property(prop)
 
         try:
-            bean.create(className, *args, application=self)
+            bean.create(className, self, *args, **kwargs)
         except TypeError as e:
             # print(e)
             se = str(e)
@@ -286,8 +390,7 @@ class ApplicationContext:
     def getBean(self, id, requiredType: Type = Default) -> object:
         def inner():
             if self.__mode == ApplicationMode.development:
-                self.reloadFromfile()
-                self.refresh()
+                self.reloadAll()
             li = []
             beanELoader = None
             for beanELoader in self.getBeanLoaderList():
@@ -299,11 +402,12 @@ class ApplicationContext:
                         return bean.instance
                 raise KeyError("Too many results -> " + str(li))
             elif len(li) == 0:
-                raise KeyError(f"Result '{id}' not found")
+                raise KeyError(f"Get bean result '{id}' not found")
             return li[0].instance
 
         b = inner()
-        errorInBed = SystemError(f"Object {b.__class__} in {self.path} \n which bean id:'{id}' maybe is not a {requiredType} object")
+        errorInBed = SystemError(
+            f"Object {b.__class__} in {self.path} \n which bean id:'{id}' maybe is not a {requiredType} object")
         try:
             if requiredType == Default or b.__class__ == requiredType:
                 return b

@@ -7,7 +7,7 @@
         <constructor-arg value="0.88"/>
     </bean>
     <bean id="payImp85" class="test.imp.payImp.PayImp">
-        <constructor-arg value="0.85"/>
+        <constructor-arg name="discount" value="0.85"/>
     </bean>
     <bean id="bookImp" class="test.imp.bookImp.BookDaoImp" >
         <constructor-arg value="西游记"/>
@@ -15,6 +15,42 @@
         <property name="brotherImp" ref="bookImp2"/>
         <property name="price" value="70"/>
         <property name="discount" value="0.95"/>
+        <property name="myMap">
+            <map>
+				<entry key="one" value="9.99"/>
+				<entry key="two" value="2.75"/>
+				<entry key="payImp" ref="payImp85"/>
+			</map>
+        </property>
+
+        <property name="myList">
+            <list>
+                <value>Item 1</value>
+                <value>Item 2</value>
+                <value>Item 3</value>
+                <ref>payImp85</ref>
+            </list>
+        </property>
+
+        <property name="mySet">
+            <set>
+                <value>Item A</value>
+                <value>Item B</value>
+                <value>Item C</value>
+                <ref>payImp85</ref>
+            </set>
+        </property>
+
+        <property name="myProperties">
+            <props>
+                <prop key="property1">Value 1</prop>
+                <prop key="property2">Value 2</prop>
+                <prop key="property3">Value 3</prop>
+                <prop key="property4">
+                    <ref>payImp85</ref>
+                </prop>
+            </props>
+        </property>
 
     </bean>
     <bean id="bookImp2" class="test.imp.bookImp.BookDaoImp" >
