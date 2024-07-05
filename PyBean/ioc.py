@@ -2,6 +2,8 @@ import os
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Type
 
+from pygments.lexers import q
+
 from PyBean.bean import *
 from PyBean.by import *
 
@@ -238,7 +240,7 @@ class ApplicationContext:
         return li
 
     def buildRef(self, refLoader: ElementLoader):  # ready for replace
-        ref_name = None
+        ref_name = refLoader.element.text
         for childLoader in refLoader.children:
             tag = childLoader.element.tag
             text = childLoader.element.text
@@ -262,6 +264,10 @@ class ApplicationContext:
                 key = childLoader.element.attrib['key']
                 if childLoader.children == []:
                     propInstance.set_property(key, value_translate(text))
+                else:
+                    for grandchild in childLoader.children:
+                        if grandchild.element.tag == "ref":
+                            propInstance.set_property(key, self.buildRef(grandchild))
 
         return propInstance
 
@@ -269,12 +275,13 @@ class ApplicationContext:
         listInstance = []
         for childLoader in listLoader.children:
             tag = childLoader.element.tag
-            text = childLoader.element.text
+
             if tag == "value":
+                text = childLoader.element.text
                 arg = value_translate(text)
                 listInstance.append(arg)
             if tag == "ref":
-                arg = self.getBean(text)
+                arg = self.buildRef(childLoader)
                 listInstance.append(arg)
 
         return listInstance
